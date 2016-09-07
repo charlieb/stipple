@@ -1,5 +1,5 @@
 from constraints import radius_exclude, rect_limit
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageFilter
 import numpy as np
 from numba import jit, float64, int64
 from random import random
@@ -84,7 +84,7 @@ def voronoi(npoints, image):
     while ip < npoints:
         x = int(random() * image.shape[0])
         y = int(random() * image.shape[1])
-        if 1.001-(image[x][y] / 255.) > random():
+        if 1.00-(image[x][y] / 255.) > random():
             points[ip][0] = x
             points[ip][1] = y
             points[ip][2] = 1.
@@ -92,7 +92,7 @@ def voronoi(npoints, image):
             ip += 1
 
     total_err = 9999999
-    while total_err > npoints / 1000: # 1 pixel of error per point's not bad
+    while total_err > npoints / 10: # 1 pixel of error per point's not bad
         kdtree(points)
         pold = points
         # rebind with new array so KDTree will continue to work ok
@@ -100,13 +100,11 @@ def voronoi(npoints, image):
         
         # build coord/density list
         # i.e. sum([px,py]*(255 - pixel grey))
-        downsample = 2
-        for xd,yd in product(range(int(image.shape[0] / downsample)), range(int(image.shape[1] / downsample))):
-            x = xd * downsample
-            y = yd * downsample
+        for x,y in product(range(image.shape[0]), range(image.shape[1])):
             p = query([x,y,1.])
             d = 255.001-image[x][y]
             points[p] += [x*d, y*d, d]
+
         for p,po in zip(points,pold): 
             if p[2] > 0: 
                 p /= p[2]
@@ -114,86 +112,56 @@ def voronoi(npoints, image):
                 p = po
 
         #draw2(npoints, pold, points, image.shape[0], image.shape[1])
-        draw1(npoints, points, image.shape[0], image.shape[1])
+        #draw1(npoints, points, image.shape[0], image.shape[1])
                 
         total_err = 0.
         for p1, p2 in zip(pold, points):
-            er = p1[:2]-p2[:2]
+            er = p1-p2
             er = er**2
             total_err += sqrt(er[0]+er[1])
         print(total_err)
 
+    # one last pass to give information about the average color of the region
+    counts = np.zeros(npoints, dtype='int64')
+    for x,y in product(range(image.shape[0]), range(image.shape[1])):
+        p = query([x,y,1.])
+        points[p][2] += 255-image[x][y]
+        counts[p] += 1
+    for p,c in zip(points, counts):
+        if c > 0: p[2] /= c
+        else: p[2] = 0.
+
     return points
-
-@jit
-def grey(p): return p[2]
-
-@jit(float64[:,:](int64, int64[:,:]))
-def add_points(npoints, image):
-    points = np.zeros((npoints,3), dtype='float64')
-    ip = 0
-    while ip < npoints:
-        x = int(random() * image.shape[0])
-        y = int(random() * image.shape[1])
-        if 1.-(image[x][y] / 255.) > random():
-            points[ip][0] = x
-            points[ip][1] = y
-            points[ip][2] = 1.
-            #print(ip, points[ip])
-            ip += 1
-
-    for _ in range(300):
-        for i in range(npoints):
-            p = points[i]
-            #p[2] = max(1, image[int(p[0])][int(p[1])] / 64.)
-            # shake it up a bit with a jitter
-            #p[0] += sqrt(2) * (0.5 - random())
-            #p[1] += sqrt(2) * (0.5 - random())
-            
-            # try to move towards the dark
-            #x = int(p[0])
-            #y = int(p[1])
-            #dirs = [(x,y,image[x][y])]
-            #if x > 0: dirs.append((x-1,y,image[x-1][y]))
-            #if x < image.shape[0]:dirs.append((x+1,y,image[x+1][y]))
-            #if y > 0: dirs.append((x,y-1,image[x][y-1]))
-            #if y < image.shape[1]:dirs.append((x,y+1,image[x][y+1]))
-            #pnew = min(dirs, key=grey)
-            #p[0] = pnew[0]
-            #p[1] = pnew[1]
-            p[2] = max(1, image[int(p[0])][int(p[1])] / 64.)
-            
-        radius_exclude(npoints, points)
-        rect_limit(0., 0., float(image.shape[0]), float(image.shape[1]), npoints, points)
-        draw1(npoints, points, image.shape[0], image.shape[1])
-    return points
-
 
 def main():
-    im = Image.open('StipplingOriginals/plant2_400x400.png').convert('L')
+    #im = Image.open('StipplingOriginals/plant2_400x400.png').convert('L')
+    im = Image.open('StippleGen2/data/grace.jpg').convert('L')
+    w,h = im.size
+    if w > h:
+        nw = 400
+        nh = int(400 * h/w)
+    else:
+        nw = int(400 * w/h)
+        nh = 400
+    im = im.resize((nw,nh))
+    im = im.filter(ImageFilter.GaussianBlur(radius=1))
     im.show()
+
     np_im = np.array(im, dtype='float64')
-    #np_im = np.zeros((128,128), dtype='float64')
-    #for i in range(128):
-    #    np_im[i].fill(i*2)
-
-    #im = Image.fromarray(np_im)
-    #im.show()
-    npoints = 10000
-    #points = add_points(npoints, np_im)
+    npoints = 2000
     points = voronoi(npoints, np_im)
-    #draw_voronoi(npoints, points, np_im.shape[1], np_im.shape[0])
 
+    mindot, maxdot = 0.75, 2.
     dwg = svg.Drawing('vor.svg')
     for p in points:
         # coordinate systems are reversed for image vs svg
-        c = svg.shapes.Circle((p[1]*10, p[0]*10), 1,# 1+np_im[p[0]][p[1]]/25, #p[2],
-                                    fill='black', 
-                                    stroke='none',
-                                    stroke_width=1.)
+        c = svg.shapes.Circle((p[1], p[0]), maxdot - (p[2] / 255.) * (mindot - maxdot),
+                                    fill='none', 
+                                    stroke='black',
+                                    stroke_width=2.)
         dwg.add(c)
     dwg.viewbox(minx=0, miny=0, 
-                width=np_im.shape[1]*10, height=np_im.shape[0]*10)
+                width=np_im.shape[1], height=np_im.shape[0])
     dwg.save()
 
 if __name__ == '__main__':
