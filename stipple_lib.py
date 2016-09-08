@@ -6,6 +6,7 @@ from random import random
 import svgwrite as svg
 import time
 from math import sqrt
+import sys
 
 from scipy.spatial import Voronoi, voronoi_plot_2d
 from scipy.spatial import KDTree
@@ -133,36 +134,49 @@ def voronoi(npoints, image):
 
     return points
 
-def main():
-    #im = Image.open('StipplingOriginals/plant2_400x400.png').convert('L')
-    im = Image.open('StippleGen2/data/grace.jpg').convert('L')
+def stipple(image, npoints, resize=400):
+    im = Image.open(image).convert('L')
     w,h = im.size
     if w > h:
-        nw = 400
-        nh = int(400 * h/w)
+        nw = resize
+        nh = int(resize * h/w)
     else:
-        nw = int(400 * w/h)
-        nh = 400
+        nw = int(resize * w/h)
+        nh = resize
     im = im.resize((nw,nh))
     im = im.filter(ImageFilter.GaussianBlur(radius=1))
-    im.show()
 
     np_im = np.array(im, dtype='float64')
-    npoints = 2000
     points = voronoi(npoints, np_im)
+    return points
 
-    mindot, maxdot = 0.75, 2.
-    dwg = svg.Drawing('vor.svg')
+def draw(points, filename, mindot=0.75, maxdot=4.):
+    minx = miny =  9999999
+    maxx = maxy = -9999999
+    dwg = svg.Drawing(filename)
     for p in points:
+        minx = p[0] - p[2] if p[0] - p[2] < minx else minx
+        maxx = p[0] + p[2] if p[0] + p[2] > maxx else maxx
+        miny = p[1] - p[2] if p[1] - p[2] < miny else miny
+        maxy = p[1] + p[2] if p[1] + p[2] > maxy else maxy
         # coordinate systems are reversed for image vs svg
-        c = svg.shapes.Circle((p[1], p[0]), maxdot - (p[2] / 255.) * (mindot - maxdot),
+        c = svg.shapes.Circle((p[1], p[0]), maxdot - (p[2] / 255.) * (maxdot - mindot),
                                     fill='none', 
                                     stroke='black',
                                     stroke_width=2.)
         dwg.add(c)
-    dwg.viewbox(minx=0, miny=0, 
-                width=np_im.shape[1], height=np_im.shape[0])
+    dwg.viewbox(minx=minx, miny=miny, width=maxx-minx, height=maxy-miny)
     dwg.save()
+
+def main():
+    #im = Image.open('StipplingOriginals/plant2_400x400.png').convert('L')
+    #im = Image.open('StippleGen2/data/grace.jpg').convert('L')
+    if len(sys.argv) < 2:
+        print("Usage: python stipple_lib.py <filename>")
+        return
+    points = stipple(sys.argv[1], 2000, resize=400)
+    draw(points, 'vor.svg', mindot=0.75, maxdot=4.)
+
 
 if __name__ == '__main__':
     t0 = time.time()
