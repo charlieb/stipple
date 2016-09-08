@@ -110,7 +110,7 @@ def voronoi(npoints, image):
             if p[2] > 0: 
                 p /= p[2]
             else:
-                p = po
+                np.copyto(p, po)
 
         #draw2(npoints, pold, points, image.shape[0], image.shape[1])
         #draw1(npoints, points, image.shape[0], image.shape[1])
@@ -155,10 +155,10 @@ def draw(points, filename, mindot=0.75, maxdot=4.):
     maxx = maxy = -9999999
     dwg = svg.Drawing(filename)
     for p in points:
-        minx = p[0] - p[2] if p[0] - p[2] < minx else minx
-        maxx = p[0] + p[2] if p[0] + p[2] > maxx else maxx
-        miny = p[1] - p[2] if p[1] - p[2] < miny else miny
-        maxy = p[1] + p[2] if p[1] + p[2] > maxy else maxy
+        minx = p[1] if p[1] < minx else minx
+        maxx = p[1] if p[1] > maxx else maxx
+        miny = p[0] if p[0] < miny else miny
+        maxy = p[0] if p[0] > maxy else maxy
         # coordinate systems are reversed for image vs svg
         c = svg.shapes.Circle((p[1], p[0]), maxdot - (p[2] / 255.) * (maxdot - mindot),
                                     fill='none', 
@@ -174,8 +174,8 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python stipple_lib.py <filename>")
         return
-    points = stipple(sys.argv[1], 2000, resize=400)
-    draw(points, 'vor.svg', mindot=0.75, maxdot=4.)
+    points = stipple(sys.argv[1], 1000, resize=200)
+    draw(points, 'vor.svg', mindot=0.275, maxdot=2.)
 
 
 if __name__ == '__main__':
