@@ -147,6 +147,7 @@ def stipple(image, npoints, resize=400):
     im = im.filter(ImageFilter.GaussianBlur(radius=1))
 
     np_im = np.array(im, dtype='float64')
+    np_im = np.swapaxes(np_im, 0,1)
     points = voronoi(npoints, np_im)
     return points
 
@@ -160,7 +161,7 @@ def draw(points, filename, mindot=0.75, maxdot=4.):
         miny = p[0] if p[0] < miny else miny
         maxy = p[0] if p[0] > maxy else maxy
         # coordinate systems are reversed for image vs svg
-        c = svg.shapes.Circle((p[1], p[0]), maxdot - (p[2] / 255.) * (maxdot - mindot),
+        c = svg.shapes.Circle((p[0], p[1]), maxdot - (p[2] / 255.) * (maxdot - mindot),
                                     fill='none', 
                                     stroke='black',
                                     stroke_width=2.)
